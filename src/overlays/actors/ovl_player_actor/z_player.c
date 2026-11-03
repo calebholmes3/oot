@@ -4163,7 +4163,8 @@ typedef enum ActionHandlerIndex {
     /* 10 */ PLAYER_ACTION_HANDLER_10,
     /* 11 */ PLAYER_ACTION_HANDLER_11,
     /* 12 */ PLAYER_ACTION_HANDLER_12,
-    /* 13 */ PLAYER_ACTION_HANDLER_13
+    /* 13 */ PLAYER_ACTION_HANDLER_13,
+    /* 14 */ PLAYER_ACTION_HANDLER_JUMP
 } ActionHandlerIndex;
 
 static s8 sActionHandlerList1[] = {
@@ -4174,13 +4175,13 @@ static s8 sActionHandlerList1[] = {
 static s8 sActionHandlerList2[] = {
     PLAYER_ACTION_HANDLER_13, PLAYER_ACTION_HANDLER_1,    PLAYER_ACTION_HANDLER_2, PLAYER_ACTION_HANDLER_5,
     PLAYER_ACTION_HANDLER_3,  PLAYER_ACTION_HANDLER_TALK, PLAYER_ACTION_HANDLER_9, PLAYER_ACTION_HANDLER_10,
-    PLAYER_ACTION_HANDLER_11, PLAYER_ACTION_HANDLER_7,    PLAYER_ACTION_HANDLER_8, -PLAYER_ACTION_HANDLER_ROLL,
+    PLAYER_ACTION_HANDLER_11, PLAYER_ACTION_HANDLER_7,    PLAYER_ACTION_HANDLER_8, PLAYER_ACTION_HANDLER_JUMP, -PLAYER_ACTION_HANDLER_ROLL,
 };
 
 static s8 sActionHandlerList3[] = {
     PLAYER_ACTION_HANDLER_13,   PLAYER_ACTION_HANDLER_1, PLAYER_ACTION_HANDLER_2,     PLAYER_ACTION_HANDLER_3,
     PLAYER_ACTION_HANDLER_TALK, PLAYER_ACTION_HANDLER_9, PLAYER_ACTION_HANDLER_10,    PLAYER_ACTION_HANDLER_11,
-    PLAYER_ACTION_HANDLER_8,    PLAYER_ACTION_HANDLER_7, -PLAYER_ACTION_HANDLER_ROLL,
+    PLAYER_ACTION_HANDLER_8,    PLAYER_ACTION_HANDLER_7, PLAYER_ACTION_HANDLER_JUMP, -PLAYER_ACTION_HANDLER_ROLL,
 };
 
 static s8 sActionHandlerList4[] = {
@@ -4201,20 +4202,20 @@ static s8 sActionHandlerListTurnInPlace[] = {
 static s8 sActionHandlerListIdle[] = {
     PLAYER_ACTION_HANDLER_0, PLAYER_ACTION_HANDLER_11, PLAYER_ACTION_HANDLER_1,     PLAYER_ACTION_HANDLER_2,
     PLAYER_ACTION_HANDLER_3, PLAYER_ACTION_HANDLER_5,  PLAYER_ACTION_HANDLER_TALK,  PLAYER_ACTION_HANDLER_9,
-    PLAYER_ACTION_HANDLER_8, PLAYER_ACTION_HANDLER_7,  -PLAYER_ACTION_HANDLER_ROLL,
+    PLAYER_ACTION_HANDLER_8, PLAYER_ACTION_HANDLER_7,  PLAYER_ACTION_HANDLER_JUMP, -PLAYER_ACTION_HANDLER_ROLL,
 };
 
 static s8 sActionHandlerList8[] = {
     PLAYER_ACTION_HANDLER_0, PLAYER_ACTION_HANDLER_11, PLAYER_ACTION_HANDLER_1, PLAYER_ACTION_HANDLER_2,
     PLAYER_ACTION_HANDLER_3, PLAYER_ACTION_HANDLER_12, PLAYER_ACTION_HANDLER_5, PLAYER_ACTION_HANDLER_TALK,
-    PLAYER_ACTION_HANDLER_9, PLAYER_ACTION_HANDLER_8,  PLAYER_ACTION_HANDLER_7, -PLAYER_ACTION_HANDLER_ROLL,
+    PLAYER_ACTION_HANDLER_9, PLAYER_ACTION_HANDLER_8,  PLAYER_ACTION_HANDLER_7, PLAYER_ACTION_HANDLER_JUMP, -PLAYER_ACTION_HANDLER_ROLL,
 };
 
 static s8 sActionHandlerList9[] = {
     PLAYER_ACTION_HANDLER_13,    PLAYER_ACTION_HANDLER_1,  PLAYER_ACTION_HANDLER_2,    PLAYER_ACTION_HANDLER_3,
     PLAYER_ACTION_HANDLER_12,    PLAYER_ACTION_HANDLER_5,  PLAYER_ACTION_HANDLER_TALK, PLAYER_ACTION_HANDLER_9,
     PLAYER_ACTION_HANDLER_10,    PLAYER_ACTION_HANDLER_11, PLAYER_ACTION_HANDLER_8,    PLAYER_ACTION_HANDLER_7,
-    -PLAYER_ACTION_HANDLER_ROLL,
+    PLAYER_ACTION_HANDLER_JUMP, -PLAYER_ACTION_HANDLER_ROLL,
 };
 
 static s8 sActionHandlerList10[] = {
@@ -4244,6 +4245,7 @@ s32 Player_ActionHandler_10(Player* this, PlayState* play);
 s32 Player_ActionHandler_11(Player* this, PlayState* play);
 s32 Player_ActionHandler_12(Player* this, PlayState* play);
 s32 Player_ActionHandler_13(Player* this, PlayState* play);
+s32 Player_ActionHandler_Jump(Player* this, PlayState* play);
 
 static s32 (*sActionHandlerFuncs[])(Player* this, PlayState* play) = {
     Player_ActionHandler_0,    // PLAYER_ACTION_HANDLER_0
@@ -4260,6 +4262,7 @@ static s32 (*sActionHandlerFuncs[])(Player* this, PlayState* play) = {
     Player_ActionHandler_11,   // PLAYER_ACTION_HANDLER_11
     Player_ActionHandler_12,   // PLAYER_ACTION_HANDLER_12
     Player_ActionHandler_13,   // PLAYER_ACTION_HANDLER_13
+    Player_ActionHandler_Jump, // PLAYER_ACTION_HANDLER_JUMP
 };
 
 /**
@@ -5724,6 +5727,36 @@ s32 func_8083A4A8(Player* this, PlayState* play) {
     this->av2.actionVar2 = 1;
 
     return 1;
+}
+
+#define PLAYER_JUMP_VELOCITY 9.0f
+
+/**
+ * Jump when L is pressed while standing or moving on the ground.
+ * Reuses the auto-jump (ledge jump) midair action, which already handles gravity and landing.
+ */
+s32 Player_ActionHandler_Jump(Player* this, PlayState* play) {
+    s16 yawDiff;
+    LinkAnimationHeader* anim;
+
+    if (!CHECK_BTN_ALL(sControlInput->press.button, BTN_L) || sUpperBodyIsBusy ||
+        !(this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ||
+        (this->stateFlags1 & (PLAYER_STATE1_23 | PLAYER_STATE1_27))) {
+        return false;
+    }
+
+    yawDiff = this->yaw - this->actor.shape.rot.y;
+
+    if ((ABS(yawDiff) < 0x1000) && (this->speedXZ > 4.0f)) {
+        anim = &gPlayerAnim_link_normal_run_jump;
+    } else {
+        anim = &gPlayerAnim_link_normal_jump;
+    }
+
+    func_80838940(this, anim, PLAYER_JUMP_VELOCITY, play, NA_SE_VO_LI_AUTO_JUMP);
+    this->av2.actionVar2 = 1;
+
+    return true;
 }
 
 void func_8083A5C4(PlayState* play, Player* this, CollisionPoly* arg2, f32 arg3, LinkAnimationHeader* anim) {
