@@ -619,6 +619,7 @@ void Player_SetBootData(PlayState* play, Player* this) {
     if (play->roomCtx.curRoom.type == ROOM_TYPE_INDOORS) {
         R_RUN_SPEED_LIMIT = 500;
     }
+    R_RUN_SPEED_LIMIT = R_RUN_SPEED_LIMIT * 3 / 2; // MOD: run 1.5x faster
 }
 
 int Player_InBlockingCsMode(PlayState* play, Player* this) {

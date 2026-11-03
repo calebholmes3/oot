@@ -4095,7 +4095,7 @@ s32 Player_CalcSpeedAndYawFromControlStick(PlayState* play, Player* this, f32* o
                 speedCap = CLAMP_MIN(speedCap, 2.0f);
             }
 
-            *outSpeedTarget = (*outSpeedTarget * 0.14f) - (8.0f * floorPitchInfluence * floorPitchInfluence);
+            *outSpeedTarget = (*outSpeedTarget * 0.21f) - (8.0f * floorPitchInfluence * floorPitchInfluence); // MOD: was 0.14f
             *outSpeedTarget = CLAMP(*outSpeedTarget, 0.0f, speedCap);
 
             return true;
