@@ -62,6 +62,12 @@
 // This is called "adjusted" for now.
 #define PLAYER_ANIM_ADJUSTED_SPEED (2.0f / 3.0f)
 
+// Mod: adult Link's Bombchus become an RPG rocket launcher. It aims like the bow (first person),
+// each shot costs one Bombchu, and the rocket explodes on impact. Child Link keeps normal Bombchus.
+// The rocket itself is EnArrow with params ARROW_RPG_ROCKET (see z_en_arrow.c).
+// Set to 0 for vanilla Bombchus.
+#define MOD_RPG 1
+
 typedef struct GetItemEntry {
     /* 0x00 */ u8 itemId;
     /* 0x01 */ u8 field; // various bit-packed data
@@ -2391,6 +2397,10 @@ s8 Player_ItemToItemAction(s32 item) {
         return PLAYER_IA_SWORD_CS;
     } else if (item == ITEM_FISHING_POLE) {
         return PLAYER_IA_FISHING_POLE;
+#if MOD_RPG
+    } else if ((item == ITEM_BOMBCHU) && LINK_IS_ADULT) {
+        return PLAYER_IA_RPG;
+#endif
     } else {
         return sItemActions[item];
     }
@@ -2768,6 +2778,15 @@ void Player_UpdateItems(Player* this, PlayState* play) {
 }
 
 s32 func_80834380(PlayState* play, Player* this, s32* itemPtr, s32* typePtr) {
+#if MOD_RPG
+    if (this->heldItemAction == PLAYER_IA_RPG) {
+        // Rockets always use Bombchu ammo, even during archery minigames.
+        *itemPtr = ITEM_BOMBCHU;
+        *typePtr = ARROW_RPG_ROCKET;
+        return AMMO(ITEM_BOMBCHU);
+    }
+#endif
+
     if (LINK_IS_ADULT) {
         *itemPtr = ITEM_BOW;
         if (this->stateFlags1 & PLAYER_STATE1_23) {
@@ -2795,7 +2814,7 @@ s32 func_8083442C(Player* this, PlayState* play) {
     s32 magicArrowType;
 
     if ((this->heldItemAction >= PLAYER_IA_BOW_FIRE) && (this->heldItemAction <= PLAYER_IA_BOW_0E) &&
-        (gSaveContext.magicState != MAGIC_STATE_IDLE)) {
+        !(MOD_RPG && (this->heldItemAction == PLAYER_IA_RPG)) && (gSaveContext.magicState != MAGIC_STATE_IDLE)) {
         Sfx_PlaySfxCentered(NA_SE_SY_ERROR);
     } else {
         Player_SetUpperActionFunc(this, func_808351D4);
@@ -3111,7 +3130,9 @@ s32 func_808350A4(PlayState* play, Player* this) {
         if (!Player_HoldsHookshot(this)) {
             func_80834380(play, this, &item, &arrowType);
 
-            if (gSaveContext.minigameState == 1) {
+            if (MOD_RPG && (arrowType == ARROW_RPG_ROCKET)) {
+                Inventory_ChangeAmmo(item, -1);
+            } else if (gSaveContext.minigameState == 1) {
                 play->interfaceCtx.hbaAmmo--;
             } else if (play->shootingGalleryStatus != 0) {
                 play->shootingGalleryStatus--;

@@ -181,6 +181,9 @@ typedef enum PlayerItemAction {
     /* 0x43 */ PLAYER_IA_MAX
 } PlayerItemAction;
 
+// Mod: the RPG rocket launcher reuses the unused bow item action, so it gets bow aiming for free.
+#define PLAYER_IA_RPG PLAYER_IA_BOW_0C
+
 typedef enum PlayerLimb {
     /* 0x00 */ PLAYER_LIMB_NONE,
     /* 0x01 */ PLAYER_LIMB_ROOT,

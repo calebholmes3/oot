@@ -42,4 +42,7 @@ typedef enum ArrowType {
     /*  10 */ ARROW_NUT
 } ArrowType;
 
+// Mod: RPG rocket fired by adult Link's Bombchus (previously unused arrow type)
+#define ARROW_RPG_ROCKET ARROW_0C
+
 #endif

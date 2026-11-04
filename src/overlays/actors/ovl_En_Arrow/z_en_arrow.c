@@ -5,12 +5,14 @@
  */
 
 #include "z_en_arrow.h"
+#include "src/overlays/actors/ovl_En_Bom/z_en_bom.h"
 
 #include "libc64/qrand.h"
 #include "libu64/debug.h"
 #include "gfx.h"
 #include "gfx_setupdl.h"
 #include "ichain.h"
+#include "rand.h"
 #include "regs.h"
 #include "sfx.h"
 #include "stack_pad.h"
@@ -25,6 +27,12 @@
 #include "assets/objects/gameplay_keep/gArrow1_Anim.h"
 #include "assets/objects/gameplay_keep/gArrow2_Anim.h"
 #include "assets/objects/gameplay_keep/eff_sparkles.h"
+#include "assets/objects/gameplay_keep/bombchu_body.h"
+
+// Mod: RPG rocket (ARROW_RPG_ROCKET) tuning
+#define ROCKET_SPEED 40.0f      // units per frame (arrows fly at 150)
+#define ROCKET_LIFETIME 60      // frames before it detonates in mid-air (range = speed * lifetime)
+#define ROCKET_MODEL_SCALE 0.6f // bombchu model scale relative to the actor
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -37,6 +45,8 @@ void EnArrow_Shoot(EnArrow* this, PlayState* play);
 void EnArrow_Fly(EnArrow* this, PlayState* play);
 void func_809B45E0(EnArrow* this, PlayState* play);
 void func_809B4640(EnArrow* this, PlayState* play);
+void EnArrow_RocketExplode(EnArrow* this, PlayState* play);
+void EnArrow_RocketTrail(EnArrow* this, PlayState* play);
 
 ActorProfile En_Arrow_Profile = {
     /**/ ACTOR_EN_ARROW,
@@ -97,7 +107,7 @@ void EnArrow_Init(Actor* thisx, PlayState* play) {
     };
     static u32 dmgFlags[] = {
         DMG_ARROW_FIRE,  DMG_ARROW_NORMAL, DMG_ARROW_NORMAL, DMG_ARROW_FIRE, DMG_ARROW_ICE,
-        DMG_ARROW_LIGHT, DMG_ARROW_UNK3,   DMG_ARROW_UNK1,   DMG_ARROW_UNK2, DMG_SLINGSHOT,
+        DMG_ARROW_LIGHT, DMG_ARROW_NORMAL, DMG_ARROW_UNK1,   DMG_ARROW_UNK2, DMG_SLINGSHOT,
     };
     EnArrow* this = (EnArrow*)thisx;
 
@@ -194,6 +204,7 @@ void EnArrow_Shoot(EnArrow* this, PlayState* play) {
             case ARROW_FIRE:
             case ARROW_ICE:
             case ARROW_LIGHT:
+            case ARROW_RPG_ROCKET:
                 Player_PlaySfx(player, NA_SE_IT_MAGIC_ARROW_SHOT);
                 break;
         }
@@ -201,7 +212,10 @@ void EnArrow_Shoot(EnArrow* this, PlayState* play) {
         EnArrow_SetupAction(this, EnArrow_Fly);
         Math_Vec3f_Copy(&this->unk_210, &this->actor.world.pos);
 
-        if (this->actor.params >= ARROW_SEED) {
+        if (this->actor.params == ARROW_RPG_ROCKET) {
+            Actor_SetProjectileSpeed(&this->actor, ROCKET_SPEED);
+            this->timer = ROCKET_LIFETIME;
+        } else if (this->actor.params >= ARROW_SEED) {
             Actor_SetProjectileSpeed(&this->actor, 80.0f);
             this->timer = 15;
             this->actor.shape.rot.x = this->actor.shape.rot.y = this->actor.shape.rot.z = 0;
@@ -267,11 +281,16 @@ void EnArrow_Fly(EnArrow* this, PlayState* play) {
     Actor* hitActor;
 
     if (DECR(this->timer) == 0) {
-        Actor_Kill(&this->actor);
+        if (this->actor.params == ARROW_RPG_ROCKET) {
+            EnArrow_RocketExplode(this, play);
+        } else {
+            Actor_Kill(&this->actor);
+        }
         return;
     }
 
-    if (this->timer < 7.2000003f) {
+    // Rockets fly straight; arrows start to drop near the end of their flight
+    if ((this->timer < 7.2000003f) && (this->actor.params != ARROW_RPG_ROCKET)) {
         this->actor.gravity = -0.4f;
     }
 
@@ -279,7 +298,16 @@ void EnArrow_Fly(EnArrow* this, PlayState* play) {
                 (this->collider.base.atFlags & AT_HIT);
 
     if (atTouched || this->touchedPoly) {
-        if (this->actor.params >= ARROW_SEED) {
+        if (this->actor.params == ARROW_RPG_ROCKET) {
+            if (atTouched) {
+                // Back up to between this frame and last frame, so the blast centers on what was hit
+                this->actor.world.pos.x = (this->actor.world.pos.x + this->actor.prevPos.x) * 0.5f;
+                this->actor.world.pos.y = (this->actor.world.pos.y + this->actor.prevPos.y) * 0.5f;
+                this->actor.world.pos.z = (this->actor.world.pos.z + this->actor.prevPos.z) * 0.5f;
+            }
+            EnArrow_RocketExplode(this, play);
+            return;
+        } else if (this->actor.params >= ARROW_SEED) {
             if (atTouched) {
                 this->actor.world.pos.x = (this->actor.world.pos.x + this->actor.prevPos.x) * 0.5f;
                 this->actor.world.pos.y = (this->actor.world.pos.y + this->actor.prevPos.y) * 0.5f;
@@ -387,6 +415,39 @@ void EnArrow_Fly(EnArrow* this, PlayState* play) {
     }
 }
 
+void EnArrow_RocketExplode(EnArrow* this, PlayState* play) {
+    // Same as a Bombchu detonating: spawn a bomb with no fuse left
+    EnBom* bomb = (EnBom*)Actor_Spawn(&play->actorCtx, play, ACTOR_EN_BOM, this->actor.world.pos.x,
+                                      this->actor.world.pos.y, this->actor.world.pos.z, 0, 0, 0, BOMB_BODY);
+
+    if (bomb != NULL) {
+        bomb->timer = 0;
+    }
+
+    Actor_Kill(&this->actor);
+}
+
+void EnArrow_RocketTrail(EnArrow* this, PlayState* play) {
+    static Vec3f fireVelocity = { 0.0f, 0.5f, 0.0f };
+    static Vec3f fireAccel = { 0.0f, 0.5f, 0.0f };
+    static Color_RGBA8 firePrimColor = { 255, 255, 100, 255 };
+    static Color_RGBA8 fireEnvColor = { 255, 50, 0, 0 };
+    static Vec3f smokeAccel = { 0.0f, 0.3f, 0.0f };
+    static Color_RGBA8 smokePrimColor = { 200, 200, 200, 255 };
+    static Color_RGBA8 smokeEnvColor = { 100, 100, 100, 255 };
+    Vec3f smokeVelocity;
+
+    smokeVelocity.x = Rand_CenteredFloat(1.0f);
+    smokeVelocity.y = Rand_ZeroOne();
+    smokeVelocity.z = Rand_CenteredFloat(1.0f);
+
+    // unk_21C is the tail of the rocket, set in func_809B4800 when drawn
+    func_8002836C(play, &this->unk_21C, &fireVelocity, &fireAccel, &firePrimColor, &fireEnvColor, 150, 0, 6);
+    EffectSsDust_Spawn(play, 0, &this->unk_21C, &smokeVelocity, &smokeAccel, &smokePrimColor, &smokeEnvColor, 120,
+                       15, 20, 0);
+    Actor_PlaySfx_Flagged(&this->actor, NA_SE_EV_FIRE_PILLAR_S - SFX_FLAG);
+}
+
 void func_809B45E0(EnArrow* this, PlayState* play) {
     SkelAnime_Update(&this->skelAnime);
 
@@ -414,7 +475,11 @@ void EnArrow_Update(Actor* thisx, PlayState* play) {
         this->actionFunc(this, play);
     }
 
-    if ((this->actor.params >= ARROW_FIRE) && (this->actor.params <= ARROW_0E)) {
+    if (this->actor.params == ARROW_RPG_ROCKET) {
+        if (EnArrow_Fly == this->actionFunc) {
+            EnArrow_RocketTrail(this, play);
+        }
+    } else if ((this->actor.params >= ARROW_FIRE) && (this->actor.params <= ARROW_0E)) {
         s16 elementalActorIds[] = { ACTOR_ARROW_FIRE, ACTOR_ARROW_ICE,  ACTOR_ARROW_LIGHT,
                                     ACTOR_ARROW_FIRE, ACTOR_ARROW_FIRE, ACTOR_ARROW_FIRE };
 
@@ -436,11 +501,12 @@ void func_809B4800(EnArrow* this, PlayState* play) {
     static Vec3f sPosAOffset = { 0.0f, 400.0f, 1500.0f };
     static Vec3f sPosBOffset = { 0.0f, -400.0f, 1500.0f };
     static Vec3f D_809B4EA0 = { 0.0f, 0.0f, -300.0f };
+    static Vec3f sRocketTailOffset = { 0.0f, 0.0f, -1000.0f };
     Vec3f posA;
     Vec3f posB;
     s32 addBlureVertex;
 
-    Matrix_MultVec3f(&D_809B4EA0, &this->unk_21C);
+    Matrix_MultVec3f((this->actor.params == ARROW_RPG_ROCKET) ? &sRocketTailOffset : &D_809B4EA0, &this->unk_21C);
 
     if (EnArrow_Fly == this->actionFunc) {
         Matrix_MultVec3f(&sPosAOffset, &posA);
@@ -474,7 +540,22 @@ void EnArrow_Draw(Actor* thisx, PlayState* play) {
     u8 alpha;
     f32 scale;
 
-    if (this->actor.params <= ARROW_0E) {
+    if (this->actor.params == ARROW_RPG_ROCKET) {
+        // Placeholder rocket model: a Bombchu body pointing along the flight direction
+        OPEN_DISPS(play->state.gfxCtx, "../z_en_arrow.c", 1330);
+
+        Gfx_SetupDL_25Opa(play->state.gfxCtx);
+        func_8002EBCC(&this->actor, play, 0);
+        gDPSetEnvColor(POLY_OPA_DISP++, 9, 9, 35, 255);
+        Matrix_Push();
+        Matrix_Translate(0.0f, 0.0f, 200.0f, MTXMODE_APPLY);
+        Matrix_Scale(ROCKET_MODEL_SCALE, ROCKET_MODEL_SCALE, ROCKET_MODEL_SCALE, MTXMODE_APPLY);
+        MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, play->state.gfxCtx, "../z_en_arrow.c", 1336);
+        gSPDisplayList(POLY_OPA_DISP++, gBombchuDL);
+        Matrix_Pop();
+
+        CLOSE_DISPS(play->state.gfxCtx, "../z_en_arrow.c", 1340);
+    } else if (this->actor.params <= ARROW_0E) {
         Gfx_SetupDL_25Opa(play->state.gfxCtx);
         SkelAnime_DrawLod(play, this->skelAnime.skeleton, this->skelAnime.jointTable, NULL, NULL, this,
                           (this->actor.projectedPos.z < MREG(95)) ? 0 : 1);
