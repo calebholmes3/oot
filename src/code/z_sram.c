@@ -25,6 +25,13 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+// Mod testing: creating a new file gives a fully stocked test save, starting in Hyrule Field.
+//   Slot 1: adult, hookshot equipped
+//   Slot 2: child, slingshot + boomerang equipped
+//   Slot 3: normal new game
+// Set to 0 to restore normal new-file behavior.
+#define MOD_TEST_SAVE 1
+
 #define SLOT_SIZE (sizeof(SaveContext) + 0x28)
 #define CHECKSUM_SIZE (sizeof(Save) / 2)
 
@@ -855,7 +862,13 @@ void Sram_InitSave(FileSelectState* fileSelect, SramContext* sramCtx) {
     u16* ptr;
     u16 checksum;
 
-#if DEBUG_FEATURES
+#if MOD_TEST_SAVE
+    if (fileSelect->buttonIndex <= 1) {
+        Sram_InitDebugSave();
+    } else {
+        Sram_InitNewSave();
+    }
+#elif DEBUG_FEATURES
     if (fileSelect->buttonIndex != 0) {
         Sram_InitNewSave();
     } else {
@@ -873,6 +886,40 @@ void Sram_InitSave(FileSelectState* fileSelect, SramContext* sramCtx) {
 #if DEBUG_FEATURES
     if (fileSelect->buttonIndex == 0) {
         gSaveContext.save.cutsceneIndex = CS_INDEX_NONE;
+    }
+#endif
+
+#if MOD_TEST_SAVE
+    if (fileSelect->buttonIndex <= 1) {
+        gSaveContext.save.cutsceneIndex = CS_INDEX_NONE;
+        gSaveContext.save.entranceIndex = ENTR_HYRULE_FIELD_0;
+        Inventory_ChangeEquipment(EQUIP_TYPE_TUNIC, EQUIP_VALUE_TUNIC_KOKIRI);
+        Inventory_ChangeEquipment(EQUIP_TYPE_BOOTS, EQUIP_VALUE_BOOTS_KOKIRI);
+
+        if (fileSelect->buttonIndex == 0) {
+            // Adult: Master Sword, Hylian Shield. C-Left: Bow, C-Down: Hookshot, C-Right: Ocarina
+            gSaveContext.save.linkAge = LINK_AGE_ADULT;
+            gSaveContext.save.info.equips.buttonItems[0] = ITEM_SWORD_MASTER;
+            Inventory_ChangeEquipment(EQUIP_TYPE_SWORD, EQUIP_VALUE_SWORD_MASTER);
+            Inventory_ChangeEquipment(EQUIP_TYPE_SHIELD, EQUIP_VALUE_SHIELD_HYLIAN);
+            gSaveContext.save.info.equips.buttonItems[1] = ITEM_BOW;
+            gSaveContext.save.info.equips.cButtonSlots[0] = SLOT_BOW;
+            gSaveContext.save.info.equips.buttonItems[2] = ITEM_HOOKSHOT;
+            gSaveContext.save.info.equips.cButtonSlots[1] = SLOT_HOOKSHOT;
+        } else {
+            // Child: Kokiri Sword, Deku Shield. C-Left: Slingshot, C-Down: Boomerang, C-Right: Ocarina
+            gSaveContext.save.linkAge = LINK_AGE_CHILD;
+            gSaveContext.save.info.equips.buttonItems[0] = ITEM_SWORD_KOKIRI;
+            Inventory_ChangeEquipment(EQUIP_TYPE_SWORD, EQUIP_VALUE_SWORD_KOKIRI);
+            Inventory_ChangeEquipment(EQUIP_TYPE_SHIELD, EQUIP_VALUE_SHIELD_DEKU);
+            gSaveContext.save.info.equips.buttonItems[1] = ITEM_SLINGSHOT;
+            gSaveContext.save.info.equips.cButtonSlots[0] = SLOT_SLINGSHOT;
+            gSaveContext.save.info.equips.buttonItems[2] = ITEM_BOOMERANG;
+            gSaveContext.save.info.equips.cButtonSlots[1] = SLOT_BOOMERANG;
+        }
+
+        gSaveContext.save.info.equips.buttonItems[3] = ITEM_OCARINA_FAIRY;
+        gSaveContext.save.info.equips.cButtonSlots[2] = SLOT_OCARINA;
     }
 #endif
 

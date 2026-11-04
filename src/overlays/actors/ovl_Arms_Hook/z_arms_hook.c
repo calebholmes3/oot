@@ -98,8 +98,8 @@ void ArmsHook_Destroy(Actor* thisx, PlayState* play) {
 void ArmsHook_Wait(ArmsHook* this, PlayState* play) {
     if (this->actor.parent == NULL) {
         Player* player = GET_PLAYER(play);
-        // get correct timer length for hookshot or longshot
-        s32 length = (player->heldItemAction == PLAYER_IA_HOOKSHOT) ? 13 : 26;
+        // get correct timer length for hookshot or longshot (doubled from vanilla 13 / 26)
+        s32 length = (player->heldItemAction == PLAYER_IA_HOOKSHOT) ? 26 : 52;
 
         ArmsHook_SetupAction(this, ArmsHook_Shoot);
         Actor_SetProjectileSpeed(&this->actor, 20.0f);
@@ -301,7 +301,8 @@ void ArmsHook_Shoot(ArmsHook* this, PlayState* play) {
             this->actor.world.pos.x += 10.0f * polyNormalX;
             this->actor.world.pos.z += 10.0f * polyNormalZ;
             this->timer = 0;
-            if (SurfaceType_CanHookshot(&play->colCtx, poly, bgId)) {
+            // Any surface is hookable (vanilla only allowed surfaces flagged by SurfaceType_CanHookshot)
+            {
                 DynaPolyActor* dynaPolyActor;
 
                 if (bgId != BGCHECK_SCENE) {
@@ -313,9 +314,6 @@ void ArmsHook_Shoot(ArmsHook* this, PlayState* play) {
                 }
                 ArmsHook_PullPlayer(this);
                 SFX_PLAY_AT_POS(&this->actor.projectedPos, NA_SE_IT_HOOKSHOT_STICK_OBJ);
-            } else {
-                CollisionCheck_SpawnShieldParticlesMetal(play, &this->actor.world.pos);
-                SFX_PLAY_AT_POS(&this->actor.projectedPos, NA_SE_IT_HOOKSHOT_REFLECT);
             }
         } else if (CHECK_BTN_ANY(play->state.input[0].press.button,
                                  (BTN_A | BTN_B | BTN_R | BTN_CUP | BTN_CDOWN | BTN_CLEFT | BTN_CRIGHT))) {

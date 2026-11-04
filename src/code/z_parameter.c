@@ -33,6 +33,9 @@
 #pragma increment_block_number "gc-jp:128 gc-jp-ce:128 gc-jp-mq:128 gc-us:128 gc-us-mq:128 ntsc-1.0:128 ntsc-1.1:128" \
                                "ntsc-1.2:128"
 
+// Mod: allow all items in all areas (see Interface_SetSceneRestrictions). Set to 0 for vanilla behavior.
+#define MOD_NO_AREA_RESTRICTIONS 1
+
 typedef struct RestrictionFlags {
     /* 0x00 */ u8 sceneId;
     /* 0x01 */ u8 flags1;
@@ -1143,6 +1146,22 @@ void Interface_SetSceneRestrictions(PlayState* play) {
     interfaceCtx->restrictions.aButton = 0;
     interfaceCtx->restrictions.bButton = 0;
     interfaceCtx->restrictions.hGauge = 0;
+
+#if MOD_NO_AREA_RESTRICTIONS
+    // Mod: lift per-area item restrictions everywhere except minigames and cutscene-only areas,
+    // which rely on them to work correctly.
+    switch (play->sceneId) {
+        case SCENE_CHAMBER_OF_THE_SAGES:
+        case SCENE_SHOOTING_GALLERY:
+        case SCENE_FISHING_POND:
+        case SCENE_BOMBCHU_BOWLING_ALLEY:
+        case SCENE_TREASURE_BOX_SHOP:
+            break;
+
+        default:
+            return;
+    }
+#endif
 
     PRINTF(
         T("ボタン表示関係データ設定 scene_data_ID=%d\n", "Data settings related to button display scene_data_ID=%d\n"),
